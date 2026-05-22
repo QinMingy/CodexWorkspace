@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -54,6 +55,32 @@ def get_site(site_key: str) -> SiteAuth:
         supported = ", ".join(SITES)
         raise ValueError(f"不支持的网站：{site_key}。当前支持：{supported}")
     return SITES[site_key]
+
+
+def installed_browser_channel() -> str | None:
+    if chrome_executable_paths():
+        return "chrome"
+    if edge_executable_paths():
+        return "msedge"
+    return None
+
+
+def chrome_executable_paths() -> list[Path]:
+    candidates = [
+        Path(os.environ.get("ProgramFiles", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(os.environ.get("LocalAppData", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def edge_executable_paths() -> list[Path]:
+    candidates = [
+        Path(os.environ.get("ProgramFiles", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(os.environ.get("LocalAppData", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+    ]
+    return [path for path in candidates if path.exists()]
 
 
 def write_netscape_cookie_file(cookies: list[dict], path: Path) -> None:
