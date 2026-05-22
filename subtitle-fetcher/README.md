@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python -m subtitle_tool check
 ```
 
-工具会检查 Python 版本、`yt-dlp`、`streamlit`、`playwright`、Playwright Chromium 浏览器内核、输出目录写入权限、网络连通性和可选的 `ffmpeg`。
+工具会检查 Python 版本、`yt-dlp`、`streamlit`、`playwright`、登录浏览器、输出目录写入权限、网络连通性和可选的 `ffmpeg`。
 
 ## 使用
 
@@ -83,7 +83,13 @@ Cookies 等同于登录凭证，只建议在自己的电脑上使用，不要把
 4. 登录成功后关闭这个窗口。
 5. 回到客户端，直接开始获取字幕。
 
-工具会把登录状态保存到本项目的 `.auth` 文件夹。下次获取同一网站字幕时，会自动复用；如果过期了，再重新打开登录窗口登录一次即可。
+工具会优先使用你本机已安装的 Chrome 或 Edge 打开一个独立登录窗口，不读取你日常浏览器的 Cookie 数据库。登录状态保存到本项目的 `.auth` 文件夹。下次获取同一网站字幕时，会自动复用；如果过期了，再重新打开登录窗口登录一次即可。
+
+如果电脑没有 Chrome/Edge，才需要安装 Playwright 自带 Chromium：
+
+```powershell
+python -m playwright install chromium
+```
 
 ### cookies.txt 在哪
 
@@ -119,7 +125,7 @@ ERROR: Could not copy Chrome cookie database
 - 完全关闭 Chrome 后重试，包括后台进程。
 - 改从 Edge 或 Firefox 读取 Cookies。
 - 确认工具和浏览器在同一个 Windows 用户下运行。
-- 重新运行 `start_client.bat`，它会按 `requirements.txt` 更新 `yt-dlp` 和 Playwright 浏览器内核。
+- 重新运行 `start_client.bat`，它会按 `requirements.txt` 更新 `yt-dlp` 和 Playwright。
 
 如果 Chrome 仍然失败，通常是 Chrome 数据库锁定或系统加密保护导致，建议使用工具内置登录窗口。
 
