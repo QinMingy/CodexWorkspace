@@ -34,6 +34,12 @@ class SubtitleChoice:
 
 
 @dataclass
+class AuthOptions:
+    cookie_file: Path | None = None
+    cookies_from_browser: str | None = None
+
+
+@dataclass
 class VideoResult:
     index: int
     title: str
