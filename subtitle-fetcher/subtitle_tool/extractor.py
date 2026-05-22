@@ -5,9 +5,12 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
+from .dlai_extractor import can_handle as can_handle_dlai
+from .dlai_extractor import collect_deeplearning_ai_transcripts
 from .models import AuthOptions, RunResult, SubtitleChoice, VideoResult, VideoTask
 from .organizer import organize_segments
 from .parser import parse_subtitle_file
@@ -17,6 +20,7 @@ ACCESS_PATTERNS = re.compile(
     r"(login|private|premium|member|region|geo|unavailable|forbidden|需要登录|会员|地区|私密)",
     re.IGNORECASE,
 )
+RATE_LIMIT_PATTERNS = re.compile(r"(429|too many requests|rate[- ]?limit)", re.IGNORECASE)
 
 
 class ExtractionError(RuntimeError):
@@ -31,6 +35,9 @@ def collect_subtitles(
 ) -> RunResult:
     languages = languages or LANGUAGE_PRIORITY
     auth_options = auth_options or AuthOptions()
+    if can_handle_dlai(source_url):
+        return collect_deeplearning_ai_transcripts(source_url, output_dir)
+
     raw_dir = output_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
@@ -42,6 +49,8 @@ def collect_subtitles(
 
     for task in tasks:
         print(f"[{task.index}/{len(tasks)}] 正在获取字幕：{task.title}")
+        if task.index > 1:
+            time.sleep(2)
         try:
             result = process_video(task, raw_dir, languages, auth_options)
         except Exception as exc:
@@ -55,7 +64,7 @@ def collect_subtitles(
 
 
 def fetch_metadata(url: str, auth_options: AuthOptions | None = None) -> dict[str, Any]:
-    command = ytdlp_command() + auth_args(auth_options) + ["--dump-single-json", "--flat-playlist", "--no-warnings", url]
+    command = ytdlp_command() + ytdlp_stability_args() + auth_args(auth_options) + ["--dump-single-json", "--flat-playlist", "--no-warnings", url]
     completed = run_command(command, timeout=120)
     try:
         return json.loads(completed.stdout)
@@ -104,8 +113,8 @@ def build_tasks(metadata: dict[str, Any], source_url: str) -> list[VideoTask]:
 def process_video(task: VideoTask, raw_dir: Path, languages: list[str], auth_options: AuthOptions | None = None) -> VideoResult:
     result = base_result(task)
     metadata = fetch_full_video_metadata(task.url, auth_options)
-    choice = choose_subtitle(metadata, languages)
-    if not choice:
+    choices = subtitle_choices(metadata, languages)
+    if not choices:
         available = available_subtitle_languages(metadata)
         result.status = "no_subtitles"
         if available:
@@ -114,7 +123,24 @@ def process_video(task: VideoTask, raw_dir: Path, languages: list[str], auth_opt
             result.error = "未找到平台字幕。B站很多视频只有弹幕或视频内嵌字幕，没有可下载的 CC 字幕；需要登录的视频请先用“打开登录窗口”登录。"
         return result
 
-    subtitle_path = download_subtitle(task, raw_dir, choice, auth_options)
+    failures: list[str] = []
+    subtitle_path: Path | None = None
+    choice: SubtitleChoice | None = None
+    for candidate in choices:
+        try:
+            subtitle_path = download_subtitle(task, raw_dir, candidate, auth_options)
+            choice = candidate
+            break
+        except Exception as exc:
+            failures.append(f"{candidate.language}/{candidate.kind}: {friendly_download_error(str(exc))}")
+            if is_rate_limited(str(exc)):
+                time.sleep(8)
+
+    if not subtitle_path or not choice:
+        result.status = "subtitle_download_failed"
+        result.error = "所有可用字幕下载尝试都失败：" + "；".join(failures)
+        return result
+
     segments = organize_segments(parse_subtitle_file(subtitle_path))
     if not segments:
         result.status = "subtitle_download_failed"
@@ -131,7 +157,7 @@ def process_video(task: VideoTask, raw_dir: Path, languages: list[str], auth_opt
 
 
 def fetch_full_video_metadata(url: str, auth_options: AuthOptions | None = None) -> dict[str, Any]:
-    command = ytdlp_command() + auth_args(auth_options) + ["--dump-single-json", "--no-playlist", "--skip-download", "--no-warnings", url]
+    command = ytdlp_command() + ytdlp_stability_args() + auth_args(auth_options) + ["--dump-single-json", "--no-playlist", "--skip-download", "--no-warnings", url]
     completed = run_command(command, timeout=120)
     try:
         return json.loads(completed.stdout)
@@ -140,25 +166,36 @@ def fetch_full_video_metadata(url: str, auth_options: AuthOptions | None = None)
 
 
 def choose_subtitle(metadata: dict[str, Any], languages: list[str]) -> SubtitleChoice | None:
+    choices = subtitle_choices(metadata, languages)
+    return choices[0] if choices else None
+
+
+def subtitle_choices(metadata: dict[str, Any], languages: list[str]) -> list[SubtitleChoice]:
     subtitles = metadata.get("subtitles") or {}
     auto_subtitles = metadata.get("automatic_captions") or {}
+    choices: list[SubtitleChoice] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_choice(language: str, kind: str, entries: list[dict[str, Any]]) -> None:
+        key = (language, kind)
+        if key not in seen and has_downloadable_entries(entries):
+            seen.add(key)
+            choices.append(SubtitleChoice(language=language, kind=kind, ext=choose_ext(entries)))
 
     for lang in languages:
         if has_downloadable_entries(subtitles.get(lang)):
-            return SubtitleChoice(language=lang, kind="manual", ext=choose_ext(subtitles[lang]))
+            add_choice(lang, "manual", subtitles[lang])
     for lang in languages:
         if has_downloadable_entries(auto_subtitles.get(lang)):
-            return SubtitleChoice(language=lang, kind="auto", ext=choose_ext(auto_subtitles[lang]))
+            add_choice(lang, "auto", auto_subtitles[lang])
 
-    manual_fallback = first_downloadable_language(subtitles)
-    if manual_fallback:
-        return SubtitleChoice(language=manual_fallback, kind="manual", ext=choose_ext(subtitles[manual_fallback]))
+    for language, entries in subtitles.items():
+        add_choice(language, "manual", entries)
 
-    auto_fallback = first_downloadable_language(auto_subtitles)
-    if auto_fallback:
-        return SubtitleChoice(language=auto_fallback, kind="auto", ext=choose_ext(auto_subtitles[auto_fallback]))
+    for language, entries in auto_subtitles.items():
+        add_choice(language, "auto", entries)
 
-    return None
+    return choices
 
 
 def available_subtitle_languages(metadata: dict[str, Any]) -> list[str]:
@@ -193,7 +230,7 @@ def choose_ext(entries: list[dict[str, Any]]) -> str:
 
 def download_subtitle(task: VideoTask, raw_dir: Path, choice: SubtitleChoice, auth_options: AuthOptions | None = None) -> Path:
     output_template = str(raw_dir / f"{safe_name(task.index, task.title)}.%(ext)s")
-    command = ytdlp_command() + auth_args(auth_options) + [
+    command = ytdlp_command() + ytdlp_stability_args() + auth_args(auth_options) + [
         "--skip-download",
         "--no-playlist",
         "--sub-langs",
@@ -213,6 +250,25 @@ def download_subtitle(task: VideoTask, raw_dir: Path, choice: SubtitleChoice, au
     if not candidates:
         raise ExtractionError("subtitle_download_failed: yt-dlp 未生成字幕文件。")
     return candidates[0]
+
+
+def ytdlp_stability_args() -> list[str]:
+    args = [
+        "--retries",
+        "5",
+        "--extractor-retries",
+        "5",
+        "--fragment-retries",
+        "5",
+        "--sleep-requests",
+        "1",
+        "--sleep-subtitles",
+        "1",
+    ]
+    js_runtime = available_js_runtime()
+    if js_runtime:
+        args.extend(["--js-runtimes", js_runtime])
+    return args
 
 
 def base_result(task: VideoTask) -> VideoResult:
@@ -248,6 +304,13 @@ def ytdlp_command() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def available_js_runtime() -> str | None:
+    for runtime in ("deno", "node"):
+        if shutil.which(runtime):
+            return runtime
+    return None
+
+
 def auth_args(auth_options: AuthOptions | None) -> list[str]:
     if not auth_options:
         return []
@@ -265,6 +328,20 @@ def classify_error(message: str) -> str:
     if "subtitle" in message.lower() or "字幕" in message:
         return "subtitle_download_failed"
     return "metadata_failed"
+
+
+def is_rate_limited(message: str) -> bool:
+    return bool(RATE_LIMIT_PATTERNS.search(message))
+
+
+def friendly_download_error(message: str) -> str:
+    if is_rate_limited(message):
+        return "YouTube 返回 429 Too Many Requests，已触发限流；工具会放慢速度并尝试其它字幕语言。"
+    if "No supported JavaScript runtime" in message:
+        return "缺少 YouTube 所需 JavaScript runtime，请安装 Deno 或 Node。"
+    if "no impersonate target is available" in message:
+        return "缺少 YouTube 请求伪装依赖，请安装 requirements.txt 中的 yt-dlp[curl-cffi]。"
+    return message
 
 
 def safe_name(index: int, title: str) -> str:
