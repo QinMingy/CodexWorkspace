@@ -71,6 +71,24 @@ streamlit run app.py
 
 Cookies 等同于登录凭证，只建议在自己的电脑上使用，不要把 Cookies 文件分享给别人。
 
+### Cookies 读取失败
+
+如果看到类似错误：
+
+```text
+ERROR: Could not copy Chrome cookie database
+```
+
+优先尝试：
+
+- 完全关闭 Chrome 后重试，包括后台进程。
+- 改用 `cookies.txt` 文件路径，这是最稳定的方式。
+- 改从 Edge 或 Firefox 读取 Cookies。
+- 确认工具和浏览器在同一个 Windows 用户下运行。
+- 重新运行 `start_client.bat`，它会按 `requirements.txt` 更新 `yt-dlp`。
+
+如果 Chrome 仍然失败，通常是 Chrome 数据库锁定或系统加密保护导致，建议直接使用 `cookies.txt`。
+
 ## 输出
 
 默认生成：
