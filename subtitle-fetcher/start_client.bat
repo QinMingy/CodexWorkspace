@@ -62,6 +62,14 @@ if not %errorlevel%==0 (
   exit /b 1
 )
 
+echo Installing browser runtime for login window...
+"%VENV_PY%" -m playwright install chromium
+if not %errorlevel%==0 (
+  echo [FAIL] Could not install Playwright Chromium runtime.
+  pause
+  exit /b 1
+)
+
 echo [4/5] Running environment check...
 "%VENV_PY%" -m subtitle_tool check
 if not %errorlevel%==0 (
@@ -72,6 +80,12 @@ if not %errorlevel%==0 (
   "%VENV_PY%" -m pip install -r requirements.txt
   if not %errorlevel%==0 (
     echo [FAIL] Could not repair dependencies from requirements.txt.
+    pause
+    exit /b 1
+  )
+  "%VENV_PY%" -m playwright install chromium
+  if not %errorlevel%==0 (
+    echo [FAIL] Could not repair Playwright Chromium runtime.
     pause
     exit /b 1
   )
@@ -95,13 +109,38 @@ exit /b 0
 
 :detect_python
 set "PY_CMD="
-where py >nul 2>nul
-if %errorlevel%==0 set "PY_CMD=py -3"
+call :refresh_python_path
 
-if not defined PY_CMD (
-  where python >nul 2>nul
-  if %errorlevel%==0 set "PY_CMD=python"
-)
+call :try_python_cmd "py -3.12"
+if defined PY_CMD exit /b 0
+
+call :try_python_cmd "py -3"
+if defined PY_CMD exit /b 0
+
+call :try_python_path "%LocalAppData%\Programs\Python\Python312\python.exe"
+if defined PY_CMD exit /b 0
+
+call :try_python_path "%ProgramFiles%\Python312\python.exe"
+if defined PY_CMD exit /b 0
+
+call :try_python_cmd "python"
+exit /b 0
+
+:try_python_cmd
+set "CANDIDATE=%~1"
+%CANDIDATE% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+if %errorlevel%==0 set "PY_CMD=%CANDIDATE%"
+exit /b 0
+
+:try_python_path
+if not exist "%~1" exit /b 0
+set "CANDIDATE=%~1"
+"%CANDIDATE%" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+if %errorlevel%==0 set "PY_CMD="%CANDIDATE%""
+exit /b 0
+
+:refresh_python_path
+set "PATH=%LocalAppData%\Programs\Python\Python312\;%LocalAppData%\Programs\Python\Python312\Scripts\;%ProgramFiles%\Python312\;%ProgramFiles%\Python312\Scripts\;%PATH%"
 exit /b 0
 
 :install_python
@@ -123,5 +162,5 @@ if not %errorlevel%==0 (
 )
 
 echo Python install finished. Refreshing PATH for this window...
-set "PATH=%LocalAppData%\Programs\Python\Python312\;%LocalAppData%\Programs\Python\Python312\Scripts\;%PATH%"
+call :refresh_python_path
 exit /b 0
