@@ -36,6 +36,31 @@ python -m subtitle_tool "视频或合集链接" --out output
 python -m subtitle_tool "视频或合集链接" --langs zh-Hans,zh-CN,zh,en
 ```
 
+需要登录态的视频可以使用 Cookies，不需要也不建议输入账号密码：
+
+```powershell
+python -m subtitle_tool "视频或合集链接" --cookies "C:\path\to\cookies.txt"
+python -m subtitle_tool "视频或合集链接" --cookies-from-browser edge
+```
+
+## 可视化客户端
+
+安装依赖后启动本地网页客户端：
+
+```powershell
+streamlit run app.py
+```
+
+客户端支持：
+
+- 输入视频或合集链接。
+- 检查本机环境配置。
+- 设置输出目录和字幕语言优先级。
+- 可选填写 `cookies.txt` 路径，或从本机浏览器读取 Cookies。
+- 完成后下载 `subtitles.md`、`subtitles.json` 和 `manifest.json`。
+
+Cookies 等同于登录凭证，只建议在自己的电脑上使用，不要把 Cookies 文件分享给别人。
+
 ## 输出
 
 默认生成：
@@ -59,4 +84,4 @@ output/
 - 只下载字幕和元信息，不下载视频本体。
 - 中文字幕优先，英文兜底。
 - 每个视频只保留一个最佳字幕版本。
-- 不处理登录、会员、私有视频和地区限制；遇到这些情况会记录原因并继续处理其他视频。
+- 默认不处理登录、会员、私有视频和地区限制；如果提供 Cookies，会把登录态透传给 `yt-dlp` 尝试获取字幕。
