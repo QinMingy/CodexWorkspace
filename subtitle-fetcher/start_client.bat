@@ -4,28 +4,35 @@ setlocal
 cd /d "%~dp0"
 
 echo [1/5] Checking Python...
-set "PY_CMD="
-where py >nul 2>nul
-if %errorlevel%==0 set "PY_CMD=py -3"
+call :detect_python
 
 if not defined PY_CMD (
-  where python >nul 2>nul
-  if %errorlevel%==0 set "PY_CMD=python"
-)
-
-if not defined PY_CMD (
-  echo [FAIL] Python was not found.
-  echo Please install Python 3.10 or newer, then run this file again.
-  pause
-  exit /b 1
+  echo [WARN] Python was not found.
+  call :install_python
+  call :detect_python
+  if not defined PY_CMD (
+    echo [FAIL] Python is still not available after the install attempt.
+    echo Please install Python 3.10 or newer manually, then run this file again.
+    echo Download page: https://www.python.org/downloads/windows/
+    pause
+    exit /b 1
+  )
 )
 
 %PY_CMD% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"
 if not %errorlevel%==0 (
-  echo [FAIL] Python 3.10 or newer is required.
+  echo [WARN] Python 3.10 or newer is required.
   %PY_CMD% --version
-  pause
-  exit /b 1
+  call :install_python
+  call :detect_python
+  %PY_CMD% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"
+  if not %errorlevel%==0 (
+    echo [FAIL] Python 3.10 or newer is still not available.
+    echo Please install Python 3.10 or newer manually, then run this file again.
+    echo Download page: https://www.python.org/downloads/windows/
+    pause
+    exit /b 1
+  )
 )
 
 echo [2/5] Preparing local virtual environment...
@@ -84,3 +91,37 @@ echo Your browser should open automatically. If it does not, visit the local URL
 "%VENV_PY%" -m streamlit run app.py --server.headless false
 
 endlocal
+exit /b 0
+
+:detect_python
+set "PY_CMD="
+where py >nul 2>nul
+if %errorlevel%==0 set "PY_CMD=py -3"
+
+if not defined PY_CMD (
+  where python >nul 2>nul
+  if %errorlevel%==0 set "PY_CMD=python"
+)
+exit /b 0
+
+:install_python
+where winget >nul 2>nul
+if not %errorlevel%==0 (
+  echo [FAIL] winget was not found, so Python cannot be installed automatically.
+  echo Please install Python 3.10 or newer manually:
+  echo https://www.python.org/downloads/windows/
+  exit /b 1
+)
+
+echo Installing Python with winget...
+winget install --id Python.Python.3.12 -e --source winget --accept-package-agreements --accept-source-agreements
+if not %errorlevel%==0 (
+  echo [FAIL] winget could not install Python automatically.
+  echo Please install Python 3.10 or newer manually:
+  echo https://www.python.org/downloads/windows/
+  exit /b 1
+)
+
+echo Python install finished. Refreshing PATH for this window...
+set "PATH=%LocalAppData%\Programs\Python\Python312\;%LocalAppData%\Programs\Python\Python312\Scripts\;%PATH%"
+exit /b 0
