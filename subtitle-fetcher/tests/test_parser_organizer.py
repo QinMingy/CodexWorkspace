@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from subtitle_tool.extractor import auth_args
+from subtitle_tool.extractor import auth_args, available_subtitle_languages, choose_subtitle
 from subtitle_tool.models import AuthOptions
 from subtitle_tool.organizer import organize_segments
 from subtitle_tool.parser import parse_srt, parse_vtt
@@ -39,6 +39,19 @@ class ParserOrganizerTests(unittest.TestCase):
     def test_auth_options_become_ytdlp_args(self):
         args = auth_args(AuthOptions(cookie_file=Path("cookies.txt"), cookies_from_browser="edge"))
         self.assertEqual(args, ["--cookies", "cookies.txt", "--cookies-from-browser", "edge"])
+
+    def test_choose_subtitle_falls_back_to_available_language(self):
+        metadata = {
+            "subtitles": {
+                "ai-zh": [{"ext": "srt", "url": "https://example.test/subtitle.srt"}],
+            }
+        }
+        choice = choose_subtitle(metadata, ["zh-Hans", "zh-CN", "en"])
+        self.assertIsNotNone(choice)
+        self.assertEqual(choice.language, "ai-zh")
+        self.assertEqual(choice.kind, "manual")
+        self.assertEqual(choice.ext, "srt")
+        self.assertEqual(available_subtitle_languages(metadata), ["ai-zh"])
 
 
 if __name__ == "__main__":
