@@ -24,11 +24,50 @@ with st.sidebar:
     langs_text = st.text_input("字幕语言优先级", value=DEFAULT_LANGS)
 
     st.subheader("登录凭证")
-    st.caption("不输入账号密码。需要登录态的视频可使用 cookies.txt，或从本机浏览器读取 Cookies。")
-    cookie_file_text = st.text_input("cookies.txt 路径（可选）", value="")
+    st.caption("不输入账号密码。公开视频不用填；需要登录/会员态的视频才需要 Cookies。")
+    st.info("最省事：先试“从浏览器读取 Cookies”。如果 Chrome 报错，再导出 cookies.txt 文件。")
+    cookie_file_text = st.text_input(
+        "cookies.txt 文件完整路径（可选）",
+        value="",
+        placeholder=r"例如：C:\Users\你的名字\Downloads\cookies.txt",
+    )
     browser_choice = st.selectbox("从浏览器读取 Cookies（可选）", BROWSERS, index=0)
     if cookie_file_text or browser_choice != "不使用":
         st.warning("Cookies 等同于登录凭证，请只在自己的电脑上使用，不要分享输出日志中的路径信息。")
+    if browser_choice == "chrome":
+        st.info("Chrome Cookies 可能被浏览器锁定或系统加密保护。若读取失败，请先完全关闭 Chrome，或改用 cookies.txt / Edge / Firefox。")
+    with st.expander("我没有 cookies.txt，怎么弄？"):
+        st.markdown(
+            """
+            `cookies.txt` 不是系统自带文件，需要你从已经登录的视频网站浏览器里导出。
+
+            最简单流程：
+
+            1. 用浏览器登录视频网站，比如 YouTube 或 B站。
+            2. 安装一个能导出 `cookies.txt` 的浏览器扩展，搜索关键词：`cookies.txt export`。
+            3. 打开目标视频网站页面，在扩展里选择导出当前网站 Cookies。
+            4. 保存成 `cookies.txt`，通常会在“下载”文件夹。
+            5. 把这个文件的完整路径填到上面的输入框。
+
+            Windows 路径示例：
+
+            ```text
+            C:\\Users\\你的名字\\Downloads\\cookies.txt
+            ```
+
+            如果不知道完整路径：在文件资源管理器里找到 `cookies.txt`，按住 Shift 后右键，选择“复制为路径”。
+            """
+        )
+    with st.expander("Cookies 读取失败怎么办？"):
+        st.markdown(
+            """
+            - 优先方式：导出 `cookies.txt`，然后在上方填写文件路径。
+            - 如果使用浏览器 Cookies，请先完全退出对应浏览器后再运行。
+            - Chrome 在 Windows 上更容易因为数据库锁定或加密保护读取失败；可以改试 Edge 或 Firefox。
+            - 确认本工具和浏览器是在同一个 Windows 用户下运行。
+            - 双击 `start_client.bat` 会自动更新 `yt-dlp`，如果仍失败，通常需要改用 `cookies.txt`。
+            """
+        )
 
 source_url = st.text_input("视频或合集链接", placeholder="粘贴 YouTube、B站视频或合集链接")
 
