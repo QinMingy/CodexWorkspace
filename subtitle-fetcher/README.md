@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python -m subtitle_tool check
 ```
 
-工具会检查 Python 版本、`yt-dlp`、输出目录写入权限、网络连通性和可选的 `ffmpeg`。
+工具会检查 Python 版本、`yt-dlp`、`streamlit`、`playwright`、Playwright Chromium 浏览器内核、输出目录写入权限、网络连通性和可选的 `ffmpeg`。
 
 ## 使用
 
@@ -36,7 +36,7 @@ python -m subtitle_tool "视频或合集链接" --out output
 python -m subtitle_tool "视频或合集链接" --langs zh-Hans,zh-CN,zh,en
 ```
 
-需要登录态的视频可以使用 Cookies，不需要也不建议输入账号密码：
+需要登录态的视频可以使用工具内置的登录窗口，或者用 Cookies 高级选项：
 
 ```powershell
 python -m subtitle_tool "视频或合集链接" --cookies "C:\path\to\cookies.txt"
@@ -53,6 +53,7 @@ start_client.bat
 
 它会自动检查 Python、创建本地虚拟环境、安装依赖、运行环境检查，并打开可视化客户端。
 如果没有检测到 Python，脚本会优先尝试通过 Windows 的 `winget` 自动安装 Python 3.12；如果系统没有 `winget`，会提示你手动安装。
+Python 安装完成后，脚本会在同一个窗口里刷新当前 PATH 并继续后续步骤，不需要你手动关闭窗口再重开。
 如果环境检查发现依赖缺失，脚本会按 `requirements.txt` 自动补装后再次检查。
 
 安装依赖后启动本地网页客户端：
@@ -66,14 +67,29 @@ streamlit run app.py
 - 输入视频或合集链接。
 - 检查本机环境配置。
 - 设置输出目录和字幕语言优先级。
-- 可选填写 `cookies.txt` 路径，或从本机浏览器读取 Cookies。
+- 点击“打开登录窗口”登录视频网站，工具会在本地保存 Cookie，下次自动复用。
+- 高级用户也可以填写 `cookies.txt` 路径，或从本机浏览器读取 Cookies。
 - 完成后下载 `subtitles.md`、`subtitles.json` 和 `manifest.json`。
 
 Cookies 等同于登录凭证，只建议在自己的电脑上使用，不要把 Cookies 文件分享给别人。
 
+### 推荐登录方式
+
+如果视频需要登录、会员态或地区态：
+
+1. 在客户端里选择要登录的网站，比如 B站或 YouTube。
+2. 点击“打开登录窗口”。
+3. 在弹出的独立浏览器窗口里正常登录。
+4. 登录成功后关闭这个窗口。
+5. 回到客户端，直接开始获取字幕。
+
+工具会把登录状态保存到本项目的 `.auth` 文件夹。下次获取同一网站字幕时，会自动复用；如果过期了，再重新打开登录窗口登录一次即可。
+
 ### cookies.txt 在哪
 
-`cookies.txt` 不是系统自带文件，需要你从已经登录的视频网站浏览器里导出。
+`cookies.txt` 是高级备用方案。普通使用优先用“打开登录窗口”，不需要自己找这个文件。
+
+如果你确实想手动提供 `cookies.txt`：它不是系统自带文件，需要你从已经登录的视频网站浏览器里导出。
 
 最简单流程：
 
@@ -99,13 +115,13 @@ ERROR: Could not copy Chrome cookie database
 
 优先尝试：
 
+- 使用客户端里的“打开登录窗口”，让工具自己保存 Cookie。
 - 完全关闭 Chrome 后重试，包括后台进程。
-- 改用 `cookies.txt` 文件路径，这是最稳定的方式。
 - 改从 Edge 或 Firefox 读取 Cookies。
 - 确认工具和浏览器在同一个 Windows 用户下运行。
-- 重新运行 `start_client.bat`，它会按 `requirements.txt` 更新 `yt-dlp`。
+- 重新运行 `start_client.bat`，它会按 `requirements.txt` 更新 `yt-dlp` 和 Playwright 浏览器内核。
 
-如果 Chrome 仍然失败，通常是 Chrome 数据库锁定或系统加密保护导致，建议直接使用 `cookies.txt`。
+如果 Chrome 仍然失败，通常是 Chrome 数据库锁定或系统加密保护导致，建议使用工具内置登录窗口。
 
 ## 输出
 
