@@ -71,6 +71,24 @@ streamlit run app.py
 
 Cookies 等同于登录凭证，只建议在自己的电脑上使用，不要把 Cookies 文件分享给别人。
 
+### cookies.txt 在哪
+
+`cookies.txt` 不是系统自带文件，需要你从已经登录的视频网站浏览器里导出。
+
+最简单流程：
+
+1. 用浏览器登录视频网站，比如 YouTube 或 B站。
+2. 安装一个能导出 `cookies.txt` 的浏览器扩展，搜索关键词：`cookies.txt export`。
+3. 打开目标视频网站页面，在扩展里选择导出当前网站 Cookies。
+4. 保存成 `cookies.txt`，通常会在“下载”文件夹。
+5. 在客户端里填写完整路径，例如：
+
+```text
+C:\Users\你的名字\Downloads\cookies.txt
+```
+
+如果不知道完整路径：在文件资源管理器里找到 `cookies.txt`，按住 Shift 后右键，选择“复制为路径”。
+
 ### Cookies 读取失败
 
 如果看到类似错误：
