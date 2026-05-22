@@ -28,7 +28,7 @@ with st.sidebar:
     cookie_file_text = st.text_input("cookies.txt 路径（可选）", value="")
     browser_choice = st.selectbox("从浏览器读取 Cookies（可选）", BROWSERS, index=0)
     if cookie_file_text or browser_choice != "不使用":
-        st.warning("Cookies 等同于登录凭证，请只在自己的电脑上使用，不要分享输出日志中的路径信息。", icon="!")
+        st.warning("Cookies 等同于登录凭证，请只在自己的电脑上使用，不要分享输出日志中的路径信息。")
 
 source_url = st.text_input("视频或合集链接", placeholder="粘贴 YouTube、B站视频或合集链接")
 
