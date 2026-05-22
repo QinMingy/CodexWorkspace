@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import streamlit as st
 
+from subtitle_tool.auth_store import SITES, cookie_file_path, detect_site
 from subtitle_tool.env_check import format_report, run_checks
 from subtitle_tool.models import AuthOptions
 from subtitle_tool.service import EnvironmentCheckError, run_subtitle_job
@@ -18,64 +21,79 @@ st.set_page_config(page_title="字幕获取工具", page_icon="CC", layout="wide
 st.title("字幕获取工具")
 st.caption("输入单个视频或合集链接，获取字幕并整理成适合 AI 阅读的 Markdown + JSON。")
 
+source_url = st.text_input("视频或合集链接", placeholder="粘贴 YouTube、B站视频或合集链接")
+detected_site = detect_site(source_url.strip()) if source_url.strip() else None
+
 with st.sidebar:
     st.header("参数")
     output_dir_text = st.text_input("输出目录", value="output")
     langs_text = st.text_input("字幕语言优先级", value=DEFAULT_LANGS)
 
     st.subheader("登录凭证")
-    st.caption("不输入账号密码。公开视频不用填；需要登录/会员态的视频才需要 Cookies。")
-    st.info("最省事：先试“从浏览器读取 Cookies”。如果 Chrome 报错，再导出 cookies.txt 文件。")
-    cookie_file_text = st.text_input(
-        "cookies.txt 文件完整路径（可选）",
-        value="",
-        placeholder=r"例如：C:\Users\你的名字\Downloads\cookies.txt",
+    st.caption("不输入账号密码。公开视频不用登录；需要登录/会员态的视频，点下面按钮登录一次即可。")
+
+    site_keys = list(SITES.keys())
+    default_site_index = site_keys.index(detected_site.key) if detected_site else 0
+    login_site_key = st.selectbox(
+        "要登录的网站",
+        site_keys,
+        index=default_site_index,
+        format_func=lambda key: SITES[key].name,
     )
-    browser_choice = st.selectbox("从浏览器读取 Cookies（可选）", BROWSERS, index=0)
-    if cookie_file_text or browser_choice != "不使用":
+    saved_cookie_path = cookie_file_path(login_site_key)
+    if saved_cookie_path.exists():
+        st.success(f"已保存 {SITES[login_site_key].name} 登录状态。")
+    else:
+        st.info(f"还没有保存 {SITES[login_site_key].name} 登录状态。")
+
+    if st.button("打开登录窗口", use_container_width=True):
+        subprocess.Popen([sys.executable, "-m", "subtitle_tool.login_helper", "--site", login_site_key])
+        st.info("登录窗口已打开。请在新窗口完成登录，登录成功后关闭该窗口，再回到这里重新点击开始。")
+
+    with st.expander("高级：手动 Cookies"):
+        cookie_file_text = st.text_input(
+            "cookies.txt 文件完整路径（可选）",
+            value="",
+            placeholder=r"例如：C:\Users\你的名字\Downloads\cookies.txt",
+        )
+        browser_choice = st.selectbox("直接从已有浏览器读取 Cookies（可选，不推荐 Chrome）", BROWSERS, index=0)
+    if cookie_file_text or browser_choice != "不使用" or saved_cookie_path.exists():
         st.warning("Cookies 等同于登录凭证，请只在自己的电脑上使用，不要分享输出日志中的路径信息。")
     if browser_choice == "chrome":
         st.info("Chrome Cookies 可能被浏览器锁定或系统加密保护。若读取失败，请先完全关闭 Chrome，或改用 cookies.txt / Edge / Firefox。")
-    with st.expander("我没有 cookies.txt，怎么弄？"):
+    with st.expander("这个登录窗口会做什么？"):
         st.markdown(
             """
-            `cookies.txt` 不是系统自带文件，需要你从已经登录的视频网站浏览器里导出。
-
-            最简单流程：
-
-            1. 用浏览器登录视频网站，比如 YouTube 或 B站。
-            2. 安装一个能导出 `cookies.txt` 的浏览器扩展，搜索关键词：`cookies.txt export`。
-            3. 打开目标视频网站页面，在扩展里选择导出当前网站 Cookies。
-            4. 保存成 `cookies.txt`，通常会在“下载”文件夹。
-            5. 把这个文件的完整路径填到上面的输入框。
-
-            Windows 路径示例：
-
-            ```text
-            C:\\Users\\你的名字\\Downloads\\cookies.txt
-            ```
-
-            如果不知道完整路径：在文件资源管理器里找到 `cookies.txt`，按住 Shift 后右键，选择“复制为路径”。
+            - 工具会打开一个独立的本地浏览器窗口。
+            - 你在这个窗口里正常登录视频网站。
+            - 登录完成后关闭这个窗口，工具会把 Cookie 保存到本项目的 `.auth` 文件夹。
+            - 下次获取同一网站字幕时，会自动复用已保存的登录状态。
+            - 如果网站登录过期，再点一次“打开登录窗口”重新登录即可。
             """
         )
     with st.expander("Cookies 读取失败怎么办？"):
         st.markdown(
             """
-            - 优先方式：导出 `cookies.txt`，然后在上方填写文件路径。
-            - 如果使用浏览器 Cookies，请先完全退出对应浏览器后再运行。
+            - 优先方式：点击“打开登录窗口”，让工具自己保存 Cookie。
+            - 如果使用已有浏览器 Cookies，请先完全退出对应浏览器后再运行。
             - Chrome 在 Windows 上更容易因为数据库锁定或加密保护读取失败；可以改试 Edge 或 Firefox。
             - 确认本工具和浏览器是在同一个 Windows 用户下运行。
-            - 双击 `start_client.bat` 会自动更新 `yt-dlp`，如果仍失败，通常需要改用 `cookies.txt`。
+            - 双击 `start_client.bat` 会自动更新 `yt-dlp` 和 Playwright 浏览器内核。
             """
         )
-
-source_url = st.text_input("视频或合集链接", placeholder="粘贴 YouTube、B站视频或合集链接")
 
 col_check, col_run = st.columns([1, 1])
 output_dir = Path(output_dir_text)
 languages = [lang.strip() for lang in langs_text.split(",") if lang.strip()]
+auto_cookie_path = cookie_file_path(detected_site.key) if detected_site else None
+selected_cookie_path = None
+if cookie_file_text.strip():
+    selected_cookie_path = Path(cookie_file_text).expanduser()
+elif auto_cookie_path and auto_cookie_path.exists():
+    selected_cookie_path = auto_cookie_path
+
 auth_options = AuthOptions(
-    cookie_file=Path(cookie_file_text).expanduser() if cookie_file_text.strip() else None,
+    cookie_file=selected_cookie_path,
     cookies_from_browser=None if browser_choice == "不使用" else browser_choice,
 )
 
