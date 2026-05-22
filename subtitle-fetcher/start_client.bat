@@ -72,6 +72,22 @@ if defined LOCAL_BROWSER (
   echo If login window fails, run: "%VENV_PY%" -m playwright install chromium
 )
 
+echo Checking YouTube JavaScript runtime...
+call :detect_js_runtime
+if defined JS_RUNTIME (
+  echo Found JavaScript runtime for YouTube: %JS_RUNTIME%
+) else (
+  echo [WARN] Deno or Node was not detected. YouTube subtitle extraction may fail with 429.
+  call :install_deno
+  call :detect_js_runtime
+  if defined JS_RUNTIME (
+    echo Found JavaScript runtime for YouTube: %JS_RUNTIME%
+  ) else (
+    echo [WARN] JavaScript runtime is still unavailable.
+    echo You can install Deno manually later: winget install DenoLand.Deno
+  )
+)
+
 echo [4/5] Running environment check...
 "%VENV_PY%" -m subtitle_tool check
 if not %errorlevel%==0 (
@@ -174,4 +190,35 @@ if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "LOCAL_BROWSE
 if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
 if exist "%LocalAppData%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
+exit /b 0
+
+:detect_js_runtime
+set "JS_RUNTIME="
+call :refresh_js_runtime_path
+where deno >nul 2>nul
+if %errorlevel%==0 set "JS_RUNTIME=Deno"
+if defined JS_RUNTIME exit /b 0
+where node >nul 2>nul
+if %errorlevel%==0 set "JS_RUNTIME=Node"
+exit /b 0
+
+:install_deno
+where winget >nul 2>nul
+if not %errorlevel%==0 (
+  echo [WARN] winget was not found, so Deno cannot be installed automatically.
+  exit /b 0
+)
+
+echo Installing Deno with winget. This is used by yt-dlp for YouTube extraction.
+winget install --id DenoLand.Deno -e --source winget --accept-package-agreements --accept-source-agreements
+if not %errorlevel%==0 (
+  echo [WARN] winget could not install Deno automatically.
+  exit /b 0
+)
+call :refresh_js_runtime_path
+deno --version >nul 2>nul
+exit /b 0
+
+:refresh_js_runtime_path
+set "PATH=%USERPROFILE%\.deno\bin;%LocalAppData%\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe;%ProgramFiles%\Deno\bin;%PATH%"
 exit /b 0
