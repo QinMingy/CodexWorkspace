@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .models import RunResult, SubtitleChoice, VideoResult, VideoTask
+from .models import AuthOptions, RunResult, SubtitleChoice, VideoResult, VideoTask
 from .organizer import organize_segments
 from .parser import parse_subtitle_file
 
@@ -20,12 +20,18 @@ class ExtractionError(RuntimeError):
     pass
 
 
-def collect_subtitles(source_url: str, output_dir: Path, languages: list[str] | None = None) -> RunResult:
+def collect_subtitles(
+    source_url: str,
+    output_dir: Path,
+    languages: list[str] | None = None,
+    auth_options: AuthOptions | None = None,
+) -> RunResult:
     languages = languages or LANGUAGE_PRIORITY
+    auth_options = auth_options or AuthOptions()
     raw_dir = output_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata = fetch_metadata(source_url)
+    metadata = fetch_metadata(source_url, auth_options)
     tasks = build_tasks(metadata, source_url)
     playlist_title = metadata.get("title") if metadata.get("_type") in {"playlist", "multi_video"} else None
     videos: list[VideoResult] = []
@@ -34,7 +40,7 @@ def collect_subtitles(source_url: str, output_dir: Path, languages: list[str] | 
     for task in tasks:
         print(f"[{task.index}/{len(tasks)}] 正在获取字幕：{task.title}")
         try:
-            result = process_video(task, raw_dir, languages)
+            result = process_video(task, raw_dir, languages, auth_options)
         except Exception as exc:
             status = classify_error(str(exc))
             result = base_result(task)
@@ -45,8 +51,8 @@ def collect_subtitles(source_url: str, output_dir: Path, languages: list[str] | 
     return RunResult(source_url=source_url, output_dir=output_dir, playlist_title=playlist_title, videos=videos, errors=errors)
 
 
-def fetch_metadata(url: str) -> dict[str, Any]:
-    command = ytdlp_command() + ["--dump-single-json", "--flat-playlist", "--no-warnings", url]
+def fetch_metadata(url: str, auth_options: AuthOptions | None = None) -> dict[str, Any]:
+    command = ytdlp_command() + auth_args(auth_options) + ["--dump-single-json", "--flat-playlist", "--no-warnings", url]
     completed = run_command(command, timeout=120)
     try:
         return json.loads(completed.stdout)
@@ -93,16 +99,16 @@ def build_tasks(metadata: dict[str, Any], source_url: str) -> list[VideoTask]:
     ]
 
 
-def process_video(task: VideoTask, raw_dir: Path, languages: list[str]) -> VideoResult:
+def process_video(task: VideoTask, raw_dir: Path, languages: list[str], auth_options: AuthOptions | None = None) -> VideoResult:
     result = base_result(task)
-    metadata = fetch_full_video_metadata(task.url)
+    metadata = fetch_full_video_metadata(task.url, auth_options)
     choice = choose_subtitle(metadata, languages)
     if not choice:
         result.status = "no_subtitles"
         result.error = "未找到中文或英文字幕。"
         return result
 
-    subtitle_path = download_subtitle(task, raw_dir, choice)
+    subtitle_path = download_subtitle(task, raw_dir, choice, auth_options)
     segments = organize_segments(parse_subtitle_file(subtitle_path))
     if not segments:
         result.status = "subtitle_download_failed"
@@ -118,8 +124,8 @@ def process_video(task: VideoTask, raw_dir: Path, languages: list[str]) -> Video
     return result
 
 
-def fetch_full_video_metadata(url: str) -> dict[str, Any]:
-    command = ytdlp_command() + ["--dump-single-json", "--no-playlist", "--skip-download", "--no-warnings", url]
+def fetch_full_video_metadata(url: str, auth_options: AuthOptions | None = None) -> dict[str, Any]:
+    command = ytdlp_command() + auth_args(auth_options) + ["--dump-single-json", "--no-playlist", "--skip-download", "--no-warnings", url]
     completed = run_command(command, timeout=120)
     try:
         return json.loads(completed.stdout)
@@ -149,9 +155,9 @@ def choose_ext(entries: list[dict[str, Any]]) -> str:
     return next((ext for ext in exts if ext), "vtt")
 
 
-def download_subtitle(task: VideoTask, raw_dir: Path, choice: SubtitleChoice) -> Path:
+def download_subtitle(task: VideoTask, raw_dir: Path, choice: SubtitleChoice, auth_options: AuthOptions | None = None) -> Path:
     output_template = str(raw_dir / f"{safe_name(task.index, task.title)}.%(ext)s")
-    command = ytdlp_command() + [
+    command = ytdlp_command() + auth_args(auth_options) + [
         "--skip-download",
         "--no-playlist",
         "--sub-langs",
@@ -204,6 +210,17 @@ def ytdlp_command() -> list[str]:
     if exe:
         return [exe]
     return [sys.executable, "-m", "yt_dlp"]
+
+
+def auth_args(auth_options: AuthOptions | None) -> list[str]:
+    if not auth_options:
+        return []
+    args: list[str] = []
+    if auth_options.cookie_file:
+        args.extend(["--cookies", str(auth_options.cookie_file)])
+    if auth_options.cookies_from_browser:
+        args.extend(["--cookies-from-browser", auth_options.cookies_from_browser])
+    return args
 
 
 def classify_error(message: str) -> str:
