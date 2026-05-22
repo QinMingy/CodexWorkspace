@@ -62,12 +62,14 @@ if not %errorlevel%==0 (
   exit /b 1
 )
 
-echo Installing browser runtime for login window...
-"%VENV_PY%" -m playwright install chromium
-if not %errorlevel%==0 (
-  echo [FAIL] Could not install Playwright Chromium runtime.
-  pause
-  exit /b 1
+echo Checking local browser for login window...
+call :detect_browser
+if defined LOCAL_BROWSER (
+  echo Found local browser: %LOCAL_BROWSER%
+) else (
+  echo [WARN] Chrome or Edge was not detected.
+  echo The client can still start, but login window may require Playwright Chromium.
+  echo If login window fails, run: "%VENV_PY%" -m playwright install chromium
 )
 
 echo [4/5] Running environment check...
@@ -83,11 +85,10 @@ if not %errorlevel%==0 (
     pause
     exit /b 1
   )
-  "%VENV_PY%" -m playwright install chromium
-  if not %errorlevel%==0 (
-    echo [FAIL] Could not repair Playwright Chromium runtime.
-    pause
-    exit /b 1
+  call :detect_browser
+  if not defined LOCAL_BROWSER (
+    echo [WARN] Chrome or Edge was not detected.
+    echo If login window fails, run: "%VENV_PY%" -m playwright install chromium
   )
   "%VENV_PY%" -m subtitle_tool check
   if not %errorlevel%==0 (
@@ -163,4 +164,14 @@ if not %errorlevel%==0 (
 
 echo Python install finished. Refreshing PATH for this window...
 call :refresh_python_path
+exit /b 0
+
+:detect_browser
+set "LOCAL_BROWSER="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "LOCAL_BROWSER=Chrome"
+if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "LOCAL_BROWSER=Chrome"
+if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "LOCAL_BROWSER=Chrome"
+if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
+if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
+if exist "%LocalAppData%\Microsoft\Edge\Application\msedge.exe" if not defined LOCAL_BROWSER set "LOCAL_BROWSER=Edge"
 exit /b 0
