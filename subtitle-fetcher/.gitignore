@@ -4,3 +4,4 @@ __pycache__/
 output/
 output_check/
 .venv/
+.auth/
