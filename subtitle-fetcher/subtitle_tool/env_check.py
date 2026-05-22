@@ -50,6 +50,8 @@ def run_checks(output_dir: Path, network_host: str = "www.youtube.com") -> Check
     items.append(check_python_package("yt-dlp", "yt_dlp", "pip install -U yt-dlp"))
     items.append(check_python_package("streamlit", "streamlit", "pip install -U streamlit"))
     items.append(check_python_package("playwright", "playwright", "pip install -U playwright"))
+    items.append(check_python_package("curl_cffi", "curl_cffi", "pip install -r requirements.txt", required=False))
+    items.append(check_youtube_js_runtime())
     items.append(check_login_browser())
     items.append(check_output_dir(output_dir))
 
@@ -68,11 +70,27 @@ def run_checks(output_dir: Path, network_host: str = "www.youtube.com") -> Check
     return CheckReport(items)
 
 
-def check_python_package(name: str, module_name: str, fix: str) -> CheckItem:
+def check_python_package(name: str, module_name: str, fix: str, required: bool = True) -> CheckItem:
     if importlib.util.find_spec(module_name):
         version = get_module_version(module_name)
-        return CheckItem(name, "OK", version or "已安装")
-    return CheckItem(name, "FAIL", "未安装。", f"请运行：{fix}")
+        return CheckItem(name, "OK", version or "已安装", required=required)
+    status = "FAIL" if required else "WARN"
+    return CheckItem(name, status, "未安装。", f"请运行：{fix}", required=required)
+
+
+def check_youtube_js_runtime() -> CheckItem:
+    for runtime in ("deno", "node"):
+        path = shutil.which(runtime)
+        if path:
+            version = runtime_version(runtime)
+            return CheckItem("YouTube JS runtime", "OK", f"{runtime}: {version or path}", required=False)
+    return CheckItem(
+        "YouTube JS runtime",
+        "WARN",
+        "未检测到 Deno 或 Node。YouTube 字幕获取可能失败或触发 429。",
+        "建议安装 Deno：winget install DenoLand.Deno",
+        required=False,
+    )
 
 
 def get_module_version(module_name: str) -> str | None:
@@ -93,6 +111,23 @@ def get_module_version(module_name: str) -> str | None:
         if line.startswith("Version:"):
             return line.split(":", 1)[1].strip()
     return None
+
+
+def runtime_version(command: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [command, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.splitlines()[0].strip() if result.stdout else None
 
 
 def check_login_browser() -> CheckItem:
