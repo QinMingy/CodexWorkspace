@@ -185,7 +185,7 @@ def has_downloadable_entries(entries: Any) -> bool:
 
 def choose_ext(entries: list[dict[str, Any]]) -> str:
     exts = [entry.get("ext") for entry in entries if isinstance(entry, dict)]
-    for preferred in ("vtt", "srt", "json3", "srv3", "ttml"):
+    for preferred in ("vtt", "srt", "json", "json3", "srv3", "ttml"):
         if preferred in exts:
             return preferred
     return next((ext for ext in exts if ext), "vtt")
