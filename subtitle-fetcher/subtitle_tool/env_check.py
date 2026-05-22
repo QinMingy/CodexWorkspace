@@ -8,6 +8,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .auth_store import installed_browser_channel
+
 
 MIN_PYTHON = (3, 10)
 
@@ -48,7 +50,7 @@ def run_checks(output_dir: Path, network_host: str = "www.youtube.com") -> Check
     items.append(check_python_package("yt-dlp", "yt_dlp", "pip install -U yt-dlp"))
     items.append(check_python_package("streamlit", "streamlit", "pip install -U streamlit"))
     items.append(check_python_package("playwright", "playwright", "pip install -U playwright"))
-    items.append(check_playwright_chromium())
+    items.append(check_login_browser())
     items.append(check_output_dir(output_dir))
 
     ffmpeg = shutil.which("ffmpeg")
@@ -93,23 +95,29 @@ def get_module_version(module_name: str) -> str | None:
     return None
 
 
-def check_playwright_chromium() -> CheckItem:
+def check_login_browser() -> CheckItem:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        return CheckItem("Playwright Chromium", "FAIL", "Playwright 未安装。", "请运行：pip install -r requirements.txt")
+        return CheckItem("登录浏览器", "FAIL", "Playwright 未安装。", "请运行：pip install -r requirements.txt")
 
+    channel = installed_browser_channel()
     try:
         with sync_playwright() as playwright:
+            if channel:
+                browser = playwright.chromium.launch(channel=channel, headless=True)
+                browser.close()
+                return CheckItem("登录浏览器", "OK", f"可使用本机浏览器：{channel}。")
             browser = playwright.chromium.launch(headless=True)
             browser.close()
-        return CheckItem("Playwright Chromium", "OK", "浏览器内核可用。")
+        return CheckItem("登录浏览器", "OK", "可使用 Playwright Chromium。")
     except Exception as exc:
         return CheckItem(
-            "Playwright Chromium",
-            "FAIL",
-            f"浏览器内核不可用：{exc}",
-            "请运行：python -m playwright install chromium",
+            "登录浏览器",
+            "WARN",
+            f"未检测到可直接使用的登录浏览器：{exc}",
+            "建议安装 Chrome 或 Edge；如果仍需内置浏览器，再运行：python -m playwright install chromium",
+            required=False,
         )
 
 
