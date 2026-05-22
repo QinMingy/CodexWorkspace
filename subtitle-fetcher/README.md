@@ -51,7 +51,8 @@ Windows 下可以直接双击：
 start_client.bat
 ```
 
-它会自动检查 Python、创建本地虚拟环境、按 `requirements.txt` 安装依赖、运行环境检查，并打开可视化客户端。
+它会自动检查 Python、创建本地虚拟环境、安装依赖、运行环境检查，并打开可视化客户端。
+如果没有检测到 Python，脚本会优先尝试通过 Windows 的 `winget` 自动安装 Python 3.12；如果系统没有 `winget`，会提示你手动安装。
 如果环境检查发现依赖缺失，脚本会按 `requirements.txt` 自动补装后再次检查。
 
 安装依赖后启动本地网页客户端：
