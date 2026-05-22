@@ -12,8 +12,11 @@ from .models import AuthOptions, RunResult, SubtitleChoice, VideoResult, VideoTa
 from .organizer import organize_segments
 from .parser import parse_subtitle_file
 
-LANGUAGE_PRIORITY = ["zh-Hans", "zh-CN", "zh", "zh-TW", "en"]
-ACCESS_PATTERNS = re.compile(r"(login|private|premium|member|region|geo|unavailable|forbidden|需要登录|会员|地区|私密)", re.IGNORECASE)
+LANGUAGE_PRIORITY = ["zh-Hans", "zh-CN", "zh", "zh-TW", "zh-Hant", "zh-HK", "en"]
+ACCESS_PATTERNS = re.compile(
+    r"(login|private|premium|member|region|geo|unavailable|forbidden|需要登录|会员|地区|私密)",
+    re.IGNORECASE,
+)
 
 
 class ExtractionError(RuntimeError):
@@ -67,7 +70,6 @@ def build_tasks(metadata: dict[str, Any], source_url: str) -> list[VideoTask]:
         for index, entry in enumerate(entries, start=1):
             if not entry:
                 continue
-            url = entry.get("url") or entry.get("webpage_url") or source_url
             webpage_url = entry.get("webpage_url") or entry.get("url") or source_url
             tasks.append(
                 VideoTask(
@@ -104,8 +106,12 @@ def process_video(task: VideoTask, raw_dir: Path, languages: list[str], auth_opt
     metadata = fetch_full_video_metadata(task.url, auth_options)
     choice = choose_subtitle(metadata, languages)
     if not choice:
+        available = available_subtitle_languages(metadata)
         result.status = "no_subtitles"
-        result.error = "未找到中文或英文字幕。"
+        if available:
+            result.error = f"找到字幕语言 {', '.join(available)}，但没有可下载的字幕格式。"
+        else:
+            result.error = "未找到平台字幕。B站很多视频只有弹幕或视频内嵌字幕，没有可下载的 CC 字幕；需要登录的视频请先用“打开登录窗口”登录。"
         return result
 
     subtitle_path = download_subtitle(task, raw_dir, choice, auth_options)
@@ -138,20 +144,50 @@ def choose_subtitle(metadata: dict[str, Any], languages: list[str]) -> SubtitleC
     auto_subtitles = metadata.get("automatic_captions") or {}
 
     for lang in languages:
-        if lang in subtitles:
+        if has_downloadable_entries(subtitles.get(lang)):
             return SubtitleChoice(language=lang, kind="manual", ext=choose_ext(subtitles[lang]))
     for lang in languages:
-        if lang in auto_subtitles:
+        if has_downloadable_entries(auto_subtitles.get(lang)):
             return SubtitleChoice(language=lang, kind="auto", ext=choose_ext(auto_subtitles[lang]))
+
+    manual_fallback = first_downloadable_language(subtitles)
+    if manual_fallback:
+        return SubtitleChoice(language=manual_fallback, kind="manual", ext=choose_ext(subtitles[manual_fallback]))
+
+    auto_fallback = first_downloadable_language(auto_subtitles)
+    if auto_fallback:
+        return SubtitleChoice(language=auto_fallback, kind="auto", ext=choose_ext(auto_subtitles[auto_fallback]))
+
     return None
+
+
+def available_subtitle_languages(metadata: dict[str, Any]) -> list[str]:
+    languages: list[str] = []
+    for source in (metadata.get("subtitles") or {}, metadata.get("automatic_captions") or {}):
+        for language in source:
+            if language not in languages:
+                languages.append(language)
+    return languages
+
+
+def first_downloadable_language(subtitles: dict[str, list[dict[str, Any]]]) -> str | None:
+    for language, entries in subtitles.items():
+        if has_downloadable_entries(entries):
+            return language
+    return None
+
+
+def has_downloadable_entries(entries: Any) -> bool:
+    if not isinstance(entries, list):
+        return False
+    return any(isinstance(entry, dict) and (entry.get("url") or entry.get("data")) for entry in entries)
 
 
 def choose_ext(entries: list[dict[str, Any]]) -> str:
     exts = [entry.get("ext") for entry in entries if isinstance(entry, dict)]
-    if "vtt" in exts:
-        return "vtt"
-    if "srt" in exts:
-        return "srt"
+    for preferred in ("vtt", "srt", "json3", "srv3", "ttml"):
+        if preferred in exts:
+            return preferred
     return next((ext for ext in exts if ext), "vtt")
 
 
