@@ -45,6 +45,14 @@ python -m subtitle_tool "视频或合集链接" --cookies-from-browser edge
 
 ## 可视化客户端
 
+Windows 下可以直接双击：
+
+```text
+start_client.bat
+```
+
+它会自动检查 Python、创建本地虚拟环境、安装依赖、运行环境检查，并打开可视化客户端。
+
 安装依赖后启动本地网页客户端：
 
 ```powershell
