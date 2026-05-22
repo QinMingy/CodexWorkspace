@@ -40,7 +40,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 set "VENV_PY=.venv\Scripts\python.exe"
 
-echo [3/5] Installing dependencies...
+echo [3/5] Checking and installing dependencies from requirements.txt...
 "%VENV_PY%" -m pip install --upgrade pip
 if not %errorlevel%==0 (
   echo [FAIL] Could not upgrade pip.
@@ -60,7 +60,22 @@ echo [4/5] Running environment check...
 if not %errorlevel%==0 (
   echo.
   echo [WARN] The tool environment check reported a problem.
-  echo You can still open the client, but subtitle fetching may fail until the issue above is fixed.
+  echo Trying to repair dependencies from requirements.txt, then checking again...
+  echo.
+  "%VENV_PY%" -m pip install -r requirements.txt
+  if not %errorlevel%==0 (
+    echo [FAIL] Could not repair dependencies from requirements.txt.
+    pause
+    exit /b 1
+  )
+  "%VENV_PY%" -m subtitle_tool check
+  if not %errorlevel%==0 (
+    echo.
+    echo [FAIL] Environment check still failed after installing dependencies.
+    echo Please review the messages above. Network access, Python setup, or yt-dlp availability may need attention.
+    pause
+    exit /b 1
+  )
   echo.
 )
 
