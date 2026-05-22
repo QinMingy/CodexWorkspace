@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import socket
 import subprocess
@@ -44,23 +45,10 @@ def run_checks(output_dir: Path, network_host: str = "www.youtube.com") -> Check
             )
         )
 
-    ytdlp = find_ytdlp()
-    if ytdlp:
-        version = get_ytdlp_version(ytdlp)
-        if version:
-            items.append(CheckItem("yt-dlp", "OK", version))
-        else:
-            items.append(
-                CheckItem(
-                    "yt-dlp",
-                    "FAIL",
-                    "已找到 yt-dlp，但无法读取版本。",
-                    "请运行：pip install -U yt-dlp",
-                )
-            )
-    else:
-        items.append(CheckItem("yt-dlp", "FAIL", "未找到 yt-dlp。", "请运行：pip install -U yt-dlp"))
-
+    items.append(check_python_package("yt-dlp", "yt_dlp", "pip install -U yt-dlp"))
+    items.append(check_python_package("streamlit", "streamlit", "pip install -U streamlit"))
+    items.append(check_python_package("playwright", "playwright", "pip install -U playwright"))
+    items.append(check_playwright_chromium())
     items.append(check_output_dir(output_dir))
 
     ffmpeg = shutil.which("ffmpeg")
@@ -78,27 +66,51 @@ def run_checks(output_dir: Path, network_host: str = "www.youtube.com") -> Check
     return CheckReport(items)
 
 
-def find_ytdlp() -> list[str] | None:
-    exe = shutil.which("yt-dlp")
-    if exe:
-        return [exe]
-    try:
-        result = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode == 0:
-        return [sys.executable, "-m", "yt_dlp"]
-    return None
+def check_python_package(name: str, module_name: str, fix: str) -> CheckItem:
+    if importlib.util.find_spec(module_name):
+        version = get_module_version(module_name)
+        return CheckItem(name, "OK", version or "已安装")
+    return CheckItem(name, "FAIL", "未安装。", f"请运行：{fix}")
 
 
-def get_ytdlp_version(command: list[str]) -> str | None:
+def get_module_version(module_name: str) -> str | None:
     try:
-        result = subprocess.run(command + ["--version"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", module_name.replace("_", "-")],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None
-    return result.stdout.strip() or None
+    for line in result.stdout.splitlines():
+        if line.startswith("Version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def check_playwright_chromium() -> CheckItem:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return CheckItem("Playwright Chromium", "FAIL", "Playwright 未安装。", "请运行：pip install -r requirements.txt")
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            browser.close()
+        return CheckItem("Playwright Chromium", "OK", "浏览器内核可用。")
+    except Exception as exc:
+        return CheckItem(
+            "Playwright Chromium",
+            "FAIL",
+            f"浏览器内核不可用：{exc}",
+            "请运行：python -m playwright install chromium",
+        )
 
 
 def check_output_dir(output_dir: Path) -> CheckItem:
@@ -114,12 +126,12 @@ def check_output_dir(output_dir: Path) -> CheckItem:
 
 def format_report(report: CheckReport) -> str:
     lines = ["环境检查"]
+    if not report.ok:
+        lines.append("环境检查未通过")
     for item in report.items:
         lines.append(f"[{item.status}] {item.name}：{item.message}")
         if item.status == "FAIL" and item.fix:
             lines.append("")
             lines.append("修复方式：")
             lines.append(item.fix)
-    if not report.ok:
-        lines.insert(1, "环境检查未通过")
     return "\n".join(lines)
