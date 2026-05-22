@@ -5,7 +5,7 @@ import time
 
 from playwright.sync_api import sync_playwright
 
-from .auth_store import auth_profile_dir, cookie_file_path, get_site, write_netscape_cookie_file
+from .auth_store import auth_profile_dir, cookie_file_path, get_site, installed_browser_channel, write_netscape_cookie_file
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,7 +24,14 @@ def main(argv: list[str] | None = None) -> int:
     print("请在弹出的浏览器窗口中完成登录，登录完成后关闭该浏览器窗口。")
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False)
+        channel = installed_browser_channel()
+        launch_options = {"headless": False}
+        if channel:
+            launch_options["channel"] = channel
+            print(f"将使用本机已安装浏览器：{channel}")
+        else:
+            print("未检测到本机 Chrome/Edge，将尝试使用 Playwright Chromium。")
+        context = p.chromium.launch_persistent_context(str(profile_dir), **launch_options)
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(site.login_url, wait_until="domcontentloaded")
 
