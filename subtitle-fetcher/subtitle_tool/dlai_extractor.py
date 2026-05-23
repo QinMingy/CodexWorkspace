@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import http.client
 import re
+import ssl
+import time
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from .models import RunResult, SubtitleSegment, VideoResult
+
+RETRYABLE_ERRORS = (http.client.IncompleteRead, TimeoutError, ConnectionError, ssl.SSLError, OSError)
 
 
 class PageParser(HTMLParser):
@@ -65,6 +70,8 @@ def collect_deeplearning_ai_transcripts(source_url: str, output_dir) -> RunResul
     course_title = discover_course_title(parser, source_url)
     videos: list[VideoResult] = []
     for index, url in enumerate(lesson_urls, start=1):
+        if index > 1:
+            time.sleep(1)
         try:
             lesson_html = html if url == source_url else fetch_page(url)
             lesson_parser = parse_page(lesson_html)
@@ -107,15 +114,27 @@ def collect_deeplearning_ai_transcripts(source_url: str, output_dir) -> RunResul
 
 
 def fetch_page(url: str) -> str:
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 subtitle-fetcher",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-    )
-    with urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8", errors="replace")
+    last_error: Exception | None = None
+    for attempt in range(1, 5):
+        try:
+            request = Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 subtitle-fetcher",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Connection": "close",
+                },
+            )
+            with urlopen(request, timeout=45) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except RETRYABLE_ERRORS as exc:
+            last_error = exc
+            if attempt == 4:
+                break
+            time.sleep(attempt * 2)
+    if last_error:
+        raise last_error
+    raise RuntimeError("网页读取失败。")
 
 
 def parse_page(html: str) -> PageParser:
