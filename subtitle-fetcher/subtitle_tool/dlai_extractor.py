@@ -63,9 +63,8 @@ def collect_deeplearning_ai_transcripts(source_url: str, output_dir) -> RunResul
     source_url = normalize_lesson_url(source_url)
     html = fetch_page(source_url)
     parser = parse_page(html)
-    lesson_urls = discover_lesson_urls(source_url, parser)
-    if source_url not in lesson_urls:
-        lesson_urls.insert(0, source_url)
+    page_cache = {source_url: html}
+    lesson_urls = discover_all_lesson_urls(source_url, parser, page_cache)
 
     course_title = discover_course_title(parser, source_url)
     videos: list[VideoResult] = []
@@ -113,9 +112,27 @@ def collect_deeplearning_ai_transcripts(source_url: str, output_dir) -> RunResul
     return RunResult(source_url=source_url, output_dir=output_dir, playlist_title=course_title, videos=videos)
 
 
+def discover_all_lesson_urls(source_url: str, parser: PageParser, page_cache: dict[str, str]) -> list[str]:
+    lesson_urls = unique_urls([source_url] + discover_lesson_urls(source_url, parser))
+    module_entry_urls = list(lesson_urls[:8])
+
+    for module_url in module_entry_urls:
+        html = page_cache.get(module_url)
+        if html is None:
+            time.sleep(0.25)
+            html = fetch_page(module_url)
+            page_cache[module_url] = html
+        for discovered_url in discover_lesson_urls(source_url, parse_page(html)):
+            normalized = normalize_lesson_url(discovered_url)
+            if normalized not in lesson_urls:
+                lesson_urls.append(normalized)
+
+    return lesson_urls[:80]
+
+
 def fetch_page(url: str) -> str:
     last_error: Exception | None = None
-    for attempt in range(1, 5):
+    for attempt in range(1, 4):
         try:
             request = Request(
                 url,
@@ -125,13 +142,13 @@ def fetch_page(url: str) -> str:
                     "Connection": "close",
                 },
             )
-            with urlopen(request, timeout=45) as response:
+            with urlopen(request, timeout=25) as response:
                 return response.read().decode("utf-8", errors="replace")
         except RETRYABLE_ERRORS as exc:
             last_error = exc
-            if attempt == 4:
+            if attempt == 3:
                 break
-            time.sleep(attempt * 2)
+            time.sleep(attempt)
     if last_error:
         raise last_error
     raise RuntimeError("网页读取失败。")
@@ -226,7 +243,18 @@ def dedupe_preserve_order(values: list[str]) -> list[str]:
     return unique
 
 
+def unique_urls(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = normalize_lesson_url(value)
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+    return unique
+
+
 def normalize_lesson_url(url: str) -> str:
     parsed = urlparse(url)
-    path = parsed.path.rstrip("!")
+    path = unquote(parsed.path).rstrip("!")
     return parsed._replace(path=path, query="", fragment="").geturl()
